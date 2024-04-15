@@ -1,0 +1,89 @@
+const { chromium } = require('playwright');
+
+const { Given, When, Then } = require('cucumber');
+const assert = require('assert');
+const fs = require('fs');
+
+let page;
+let browser;
+
+Given('I open the Sauce Demo website', async () => {
+    browser = await chromium.launch();
+    const context = await browser.newContext();
+    page = await context.newPage();
+    await page.goto('https://www.saucedemo.com/');
+});
+
+When('I login with userID {string} and password {string}', async (userID, password) => {
+    await page.fill('#user-name', userID);
+    await page.fill('#password', password);
+    await page.click('#login-button');
+});
+
+When('I add items to cart:', async (dataTable) => {
+    const items = dataTable.hashes();
+    for (const item of items) {
+        await page.click(`[data-test='add-to-cart-${item.name}']`);
+    }
+});
+
+Then('I check if all items are present in CSV file', async () => {
+    const testData = fs.readFileSync('testData.csv', 'utf8');
+    const items = testData.trim().split('\n').map(line => line.trim());
+    for (const item of items) {
+        const isPresent = await page.isVisible(`[data-test='inventory_item_name'][innerText="${item}"]`);
+        assert.strictEqual(isPresent, true, `Item "${item}" is not present on the landing page`);
+    }
+});
+
+When('I go to cart', async () => {
+    await page.click('.shopping_cart_link');
+});
+
+When('I remove {string} from item list', async (itemName) => {
+    await page.click(`[data-test='remove-${itemName}']`);
+});
+
+When('I click "Checkout"', async () => {
+    await page.click('#checkout');
+});
+
+When('I provide First Name {string}, Last Name {string}, Zip Code {string}', async (firstName, lastName, zipCode) => {
+    await page.fill('#first-name', firstName);
+    await page.fill('#last-name', lastName);
+    await page.fill('#postal-code', zipCode);
+});
+
+When('I click "Continue"', async () => {
+    await page.click('#continue');
+});
+
+When('I click on the cart', async () => {
+    await page.click('.shopping_cart_link');
+});
+
+When('I click "Back Home"', async () => {
+    await page.click('.bm-burger-button');
+    await page.click('#logout_sidebar_link');
+});
+
+Then('I check the total price', async () => {
+    const totalPrice = await page.innerText('.summary_total_label');
+    const totalPriceNum = parseFloat(totalPrice.replace('$', ''));
+    if (totalPriceNum < 40) {
+        await page.click('#finish');
+        const confirmationMessage = await page.innerText('.complete-header');
+        assert.strictEqual(confirmationMessage, 'Thank you for your order!');
+    } else {
+        await page.click('#cancel');
+    }
+});
+
+Then('I throw exception if the confirmation message is not displayed', async () => {
+    const confirmationMessage = await page.innerText('.complete-header');
+    assert.strictEqual(confirmationMessage, 'Thank you for your order!');
+});
+
+After(async () => {
+    await browser.close();
+});
